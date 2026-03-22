@@ -1,0 +1,21 @@
+version: "3"
+
+services:
+  conduit:
+    image: matrixconduit/matrix-conduit:latest
+    restart: unless-stopped
+    ports:
+      - "8448:6167"   # Matrix federation port (if you want federation)
+      - "6167:6167"   # Internal port
+    volumes:
+      - ./conduit_data:/var/lib/matrix-conduit
+    environment:
+      CONDUIT_SERVER_NAME: "your.domain.com"       # Change to your actual domain
+      CONDUIT_DATABASE_BACKEND: rocksdb
+      CONDUIT_ALLOW_REGISTRATION: "true"            # Set false after creating accounts
+      CONDUIT_ALLOW_FEDERATION: "false"             # Keep false for private homeserver
+      CONDUIT_MAX_REQUEST_SIZE: "20000000"
+      CONDUIT_TRUSTED_SERVERS: '["matrix.org"]'
+      CONDUIT_LOG: warn,rocket=off,_=off,sled=off
+      CONDUIT_ADDRESS: "0.0.0.0"
+      CONDUIT_PORT: "6167"

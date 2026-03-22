@@ -1,0 +1,6 @@
+{
+  "name": "matrix",
+  "description": "Matrix messaging bridge for a self-hosted Conduit homeserver",
+  "version": "0.0.1",
+  "keywords": ["matrix", "messaging", "channel", "mcp", "conduit"]
+}

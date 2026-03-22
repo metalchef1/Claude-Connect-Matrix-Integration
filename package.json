@@ -1,0 +1,12 @@
+{
+  "name": "claude-channel-matrix",
+  "version": "0.0.1",
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "start": "bun install && bun run server.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0"
+  }
+}
