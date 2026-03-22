@@ -4,7 +4,19 @@ A Matrix channel plugin for [Claude Code](https://docs.anthropic.com/en/docs/cla
 
 Send a message from your phone → Claude sees it, responds back to your Matrix room.
 
+**Works wherever Claude Code runs — headless servers, WSL, SSH sessions, bare terminals. No Claude desktop app required.**
+
 > **This requires a self-hosted Matrix homeserver.** See the [Self-Hosting](#self-hosting-a-matrix-server) section below. You cannot use matrix.org or any managed homeserver — the bot account must be on a server you control, and the credentials must be accessible to Claude Code.
+
+---
+
+## Why this instead of the official connectors?
+
+Anthropic ships official Claude Code Channels for [Discord and Telegram](https://claude.com/connectors). If you already use those apps, they work fine.
+
+This plugin is for people who don't want a third-party messaging platform in the loop. Your messages go: phone → your Matrix server → Claude Code. Discord and Telegram never see them.
+
+It also works on any machine running Claude Code — no desktop app, no GUI, no Anthropic mobile app required. If you're SSH'd into a server or running Claude Code headless, this is the only remote messaging option.
 
 ---
 
