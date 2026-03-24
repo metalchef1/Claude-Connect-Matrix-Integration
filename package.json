@@ -7,6 +7,7 @@
     "start": "bun install && bun run server.ts"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.0.0"
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "zod": "^3.0.0"
   }
 }

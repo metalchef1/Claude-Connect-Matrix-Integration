@@ -15,6 +15,7 @@ import {
   ListToolsRequestSchema,
   CallToolRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js'
+import { z } from 'zod'
 import {
   readFileSync, writeFileSync, mkdirSync,
   renameSync, realpathSync, chmodSync,
@@ -203,6 +204,13 @@ function assertSendable(f: string): void {
   }
 }
 
+// 5 lowercase letters a-z minus 'l'. Case-insensitive for phone autocorrect.
+// Strict: no bare yes/no (conversational), no prefix/suffix chatter.
+const PERMISSION_REPLY_RE = /^\s*(y|yes|n|no)\s+([a-km-z]{5})\s*$/i
+
+// Stores pending permission details keyed by request_id
+const pendingPermissions = new Map<string, { tool_name: string; description: string; input_preview: string }>()
+
 // Split long messages at paragraph/line/word boundaries
 function chunkText(text: string, limit = 16000): string[] {
   if (text.length <= limit) return [text]
@@ -225,7 +233,7 @@ function chunkText(text: string, limit = 16000): string[] {
 const mcp = new Server(
   { name: 'matrix', version: '1.0.0' },
   {
-    capabilities: { tools: {}, experimental: { 'claude/channel': {} } },
+    capabilities: { tools: {}, experimental: { 'claude/channel': {}, 'claude/channel/permission': {} } },
     instructions: [
       'The sender reads Matrix, not this session. Anything you want them to see must go through the reply tool — your transcript output never reaches their chat.',
       '',
@@ -330,6 +338,34 @@ mcp.setRequestHandler(CallToolRequestSchema, async req => {
   }
 })
 
+// Receive permission_request from Claude Code → send to Matrix room
+mcp.setNotificationHandler(
+  z.object({
+    method: z.literal('notifications/claude/channel/permission_request'),
+    params: z.object({
+      request_id: z.string(),
+      tool_name: z.string(),
+      description: z.string(),
+      input_preview: z.string(),
+    }),
+  }),
+  async ({ params }) => {
+    const { request_id, tool_name, description, input_preview } = params
+    pendingPermissions.set(request_id, { tool_name, description, input_preview })
+    const preview = input_preview.length > 0 ? `\n\`\`\`\n${input_preview}\n\`\`\`` : ''
+    const text = [
+      `🔐 Permission: ${tool_name}`,
+      description,
+      preview,
+      ``,
+      `Reply **yes ${request_id}** to allow or **no ${request_id}** to deny.`,
+    ].filter(l => l !== undefined).join('\n')
+    await sendMessage(ROOM_ID!, text).catch(err => {
+      process.stderr.write(`matrix channel: permission_request send failed: ${err}\n`)
+    })
+  },
+)
+
 // --- Sync loop ---
 
 await mcp.connect(new StdioServerTransport())
@@ -433,6 +469,21 @@ void (async () => {
 
         if (!isAllowed(event.sender)) {
           process.stderr.write(`matrix channel: dropped message from unlisted user ${event.sender}\n`)
+          continue
+        }
+
+        // Permission-reply intercept: "yes xxxxx" / "no xxxxx" answers a pending permission request
+        // instead of being forwarded to Claude as a chat message.
+        const permMatch = PERMISSION_REPLY_RE.exec(body)
+        if (permMatch) {
+          const request_id = permMatch[2]!.toLowerCase()
+          const behavior = permMatch[1]!.toLowerCase().startsWith('y') ? 'allow' : 'deny'
+          void mcp.notification({
+            method: 'notifications/claude/channel/permission',
+            params: { request_id, behavior },
+          })
+          pendingPermissions.delete(request_id)
+          void sendReaction(ROOM_ID!, event.event_id, behavior === 'allow' ? '✅' : '❌')
           continue
         }
 
