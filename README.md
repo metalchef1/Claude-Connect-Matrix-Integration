@@ -215,6 +215,18 @@ View or update bot credentials stored in `~/.claude/channels/matrix/.env`.
 
 ---
 
+## Companion Projects
+
+These three projects are built by the same author and designed to work together on the same homelab infrastructure:
+
+**[Claude-Memory-Stack](https://github.com/metalchef1/Claude-Memory-Stack)** — gives Claude a persistent memory that survives across every conversation. Stores memories in a local vector database, injects the most relevant ones before each response. When you're chatting via Matrix, Claude remembers your setup, your decisions, and your history — because Memory Stack is running underneath it.
+
+**[Glaeken](https://github.com/metalchef1/Glaeken)** — a homelab sentinel agent that uses the same Conduit Matrix homeserver as this plugin. Glaeken monitors your infrastructure, auto-restarts failed containers, and sends alerts to Matrix. He also has his own memory instance backed by Claude-Memory-Stack — so he learns from incidents over time.
+
+All three are fully self-hosted. No third-party platforms, no data leaving your network.
+
+---
+
 ## Pushing to Anthropic
 
 This is a community implementation of the Claude Code Channels feature for Matrix. If you'd like to see it in the official plugin marketplace, open an issue on the [Claude Code GitHub repo](https://github.com/anthropics/claude-code) linking to this project.
