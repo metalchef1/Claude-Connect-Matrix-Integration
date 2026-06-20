@@ -9,6 +9,15 @@
  * Requires: MATRIX_HOMESERVER_URL, MATRIX_ACCESS_TOKEN, MATRIX_ROOM_ID, MATRIX_USER_ID
  */
 
+// Kill any stale copies of this server from previous sessions (Windows only)
+try {
+  const myPid = process.pid
+  const result = Bun.spawnSync([
+    'powershell.exe', '-NoProfile', '-NonInteractive', '-Command',
+    `Get-CimInstance Win32_Process | Where-Object { $_.Name -eq 'bun.exe' -and $_.CommandLine -like '*matrix*server.ts*' -and $_.ProcessId -ne ${myPid} } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }`
+  ])
+} catch {}
+
 import { Server } from '@modelcontextprotocol/sdk/server/index.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import {
@@ -20,8 +29,8 @@ import {
   readFileSync, writeFileSync, mkdirSync,
   renameSync, realpathSync, chmodSync,
 } from 'fs'
-import { homedir } from 'os'
-import { join, sep } from 'path'
+import { homedir, tmpdir } from 'os'
+import { join, sep, extname } from 'path'
 
 const STATE_DIR = process.env.MATRIX_STATE_DIR ?? join(homedir(), '.claude', 'channels', 'matrix')
 const ACCESS_FILE = join(STATE_DIR, 'access.json')
@@ -139,6 +148,21 @@ async function sendTyping(roomId: string): Promise<void> {
     `/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/typing/${encodeURIComponent(BOT_USER_ID!)}`,
     { typing: true, timeout: 5000 },
   ).catch(() => {})
+}
+
+// Download a Matrix media file (mxc://server/id) and return local temp path
+async function downloadMedia(mxcUrl: string, filename: string): Promise<string> {
+  const match = mxcUrl.match(/^mxc:\/\/([^/]+)\/(.+)$/)
+  if (!match) throw new Error(`invalid mxc URL: ${mxcUrl}`)
+  const [, serverName, mediaId] = match
+  const url = `${HOMESERVER}/_matrix/client/v1/media/download/${encodeURIComponent(serverName!)}/${encodeURIComponent(mediaId!)}`
+  const res = await fetch(url, { headers: { 'Authorization': `Bearer ${ACCESS_TOKEN}` } })
+  if (!res.ok) throw new Error(`media download failed: ${res.status}`)
+  const buf = await res.arrayBuffer()
+  const ext = extname(filename) || '.bin'
+  const tmpPath = join(tmpdir(), `matrix-media-${Date.now()}${ext}`)
+  writeFileSync(tmpPath, Buffer.from(buf))
+  return tmpPath
 }
 
 // --- Access control ---
@@ -436,6 +460,7 @@ void (async () => {
                 content: {
                   msgtype?: string
                   body?: string
+                  url?: string
                   'm.relates_to'?: unknown
                   'm.new_content'?: unknown
                 }
@@ -461,10 +486,12 @@ void (async () => {
       for (const event of events) {
         if (event.type !== 'm.room.message') continue
         if (event.sender === BOT_USER_ID) continue           // skip our own messages
-        if (event.content['m.relates_to']) continue          // skip edits/reactions
-        if (event.content['m.new_content']) continue         // skip replacement events
-        if (event.content.msgtype !== 'm.text') continue
-        const body = event.content.body
+        if (event.content['m.new_content']) continue         // skip replacement/edit events
+
+        const msgtype = event.content.msgtype
+        if (msgtype !== 'm.text' && msgtype !== 'm.image' && msgtype !== 'm.file') continue
+
+        let body = event.content.body
         if (!body) continue
 
         if (!isAllowed(event.sender)) {
@@ -485,6 +512,19 @@ void (async () => {
           pendingPermissions.delete(request_id)
           void sendReaction(ROOM_ID!, event.event_id, behavior === 'allow' ? '✅' : '❌')
           continue
+        }
+
+        // Download media files (images, etc.) and append local path to body
+        const mxcUrl = event.content.url
+        if ((msgtype === 'm.image' || msgtype === 'm.file') && mxcUrl) {
+          try {
+            const tmpPath = await downloadMedia(mxcUrl, body)
+            body = `[${msgtype === 'm.image' ? 'Image' : 'File'}: ${body}]\n${tmpPath}`
+            process.stderr.write(`matrix channel: downloaded media to ${tmpPath}\n`)
+          } catch (err) {
+            process.stderr.write(`matrix channel: media download failed: ${err}\n`)
+            body = `[${msgtype === 'm.image' ? 'Image' : 'File'}: ${body}] (download failed: ${err})`
+          }
         }
 
         // Typing indicator — fire and forget
